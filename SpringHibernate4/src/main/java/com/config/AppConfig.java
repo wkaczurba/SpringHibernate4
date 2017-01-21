@@ -11,18 +11,22 @@ import org.springframework.context.annotation.Profile;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseBuilder;
 import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
+import org.springframework.orm.hibernate5.HibernateTransactionManager;
 import org.springframework.orm.hibernate5.LocalSessionFactoryBean;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.PlatformTransactionManager;
-import org.springframework.jdbc.datasource.DataSourceTransactionManager;
+import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.core.io.ClassPathResource;
-import org.springframework.context.annotation.Scope;
 import org.springframework.core.env.Environment;
+import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+
+import java.io.IOException;
 import java.util.Arrays;
 
 @Configuration
 @ComponentScan("com")
+@EnableTransactionManagement
 public class AppConfig {
 	// What is needed:?
 	// 1. DataSource (either MySQL or H2)
@@ -32,6 +36,9 @@ public class AppConfig {
 	
 	@Autowired
 	Environment environment; // This is to read active profile.
+	
+	@Autowired
+	SessionFactory sessionFactory;
 	
 	@Bean
 	@Profile("test")
@@ -61,13 +68,17 @@ public class AppConfig {
 	//public BasicDataSource dbcpDataSource() {
 	//}
 	
+	// HibernateTransactionManager is required to use @Transactional annotation in repository.
 	@Bean
-	public PlatformTransactionManager platformTransactionManager(DataSource dataSource) {
-		return new DataSourceTransactionManager(dataSource);
-	}
+	  public PlatformTransactionManager annotationDrivenTransactionManager() {
+		    System.out.println(sessionFactory);
+		    HibernateTransactionManager transactionManager = new HibernateTransactionManager();
+		    transactionManager.setSessionFactory(sessionFactory);
+		    return transactionManager;
+		  }	
 	
 	@Bean
-	public LocalSessionFactoryBean sessionFactory(DataSource dataSource) {
+	public SessionFactory sessionFactory(DataSource dataSource) throws IOException {
 		LocalSessionFactoryBean sfb = new LocalSessionFactoryBean();
 		sfb.setDataSource(dataSource);
 		sfb.setPackagesToScan("com.domain");
@@ -84,6 +95,7 @@ public class AppConfig {
 		System.out.println("Hibernate dialect set to:" + props.getProperty("dialect"));
 
 		sfb.setHibernateProperties(props);
-		return sfb;
+		sfb.afterPropertiesSet();
+		return sfb.getObject();
 	}
 }

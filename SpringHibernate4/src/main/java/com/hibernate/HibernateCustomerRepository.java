@@ -1,12 +1,13 @@
 package com.hibernate;
 
 import java.util.List;
-
 import org.hibernate.SessionFactory;
 import org.hibernate.Session;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.io.Serializable;
 import com.db.CustomerRepository;
 import com.domain.Customer;
 
@@ -18,6 +19,10 @@ public class HibernateCustomerRepository implements CustomerRepository {
 	
 	public HibernateCustomerRepository(SessionFactory sessionFactory) {
 		this.sessionFactory = sessionFactory;
+	}
+	
+	private Session currentSession() {
+		return sessionFactory.getCurrentSession();
 	}
 
 	@Override
@@ -39,24 +44,22 @@ public class HibernateCustomerRepository implements CustomerRepository {
 	}
 
 	@Override
+	@Transactional	
 	public Customer save(Customer customer) {
-		Session session = sessionFactory.openSession();
-		session.beginTransaction();
-		session.save(customer);
-		session.getTransaction().commit();
-		session.close();
-		return null;
+		Serializable id = currentSession().save(customer);
+		return new Customer((Long) id,
+				customer.getUsername(),
+				customer.getPassword(),
+				customer.getFirstname(),
+				customer.getLastname(),
+				customer.getEmail());
 	}
 
 	@Override
+	@Transactional
+	@SuppressWarnings("unchecked")
 	public List<Customer> findAll() {
-		Session session = sessionFactory.openSession();
-		session.beginTransaction();
-		
-		@SuppressWarnings("unchecked") // Not best...
-		List<Customer> list = session.createQuery("from Customer").getResultList();
-		
-		session.close();
+		List<Customer> list = currentSession().createQuery("from Customer").getResultList();
 		return list;
 
 	}

@@ -9,7 +9,7 @@ import org.hibernate.annotations.GenericGenerator;
 
 import javax.persistence.Id;
 
-// TODO: Annotate this one with Hibernate stuff.
+// TODO: It Hibernate validation that would check length of fields etc... 
 @Entity
 @Table(name="customer") // probably not needed; it should be inferred from the class name
 public class Customer {
@@ -33,6 +33,24 @@ public class Customer {
 	
 	@Column(name="email")
 	private String email;
+	
+	// Default constructor is required for persistence.
+	private Customer() {
+	}
+	
+	public Customer(Long id, String username, String password, String firstname, String lastname, String email) {
+		this(username, password, firstname, lastname, email);
+		this.id = id;
+	}
+	
+	
+	public Customer(String username, String password, String firstname, String lastname, String email) {
+		this.username = username;
+		this.password = password;
+		this.firstname = firstname;
+		this.lastname = lastname;
+		this.email = email;
+	}
 	
 	public Long getId() {
 		return id;
