@@ -3,6 +3,8 @@ package com.config;
 import java.util.Properties;
 import java.util.stream.Collectors;
 
+import javax.inject.Inject;
+import javax.persistence.EntityManagerFactory;
 import javax.sql.DataSource;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Bean;
@@ -13,20 +15,37 @@ import org.springframework.jdbc.datasource.embedded.EmbeddedDatabaseType;
 import org.springframework.jdbc.datasource.init.ScriptUtils;
 import org.springframework.orm.hibernate5.HibernateTransactionManager;
 import org.springframework.orm.hibernate5.LocalSessionFactoryBean;
+import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
+import org.springframework.orm.jpa.JpaTransactionManager;
+import org.springframework.orm.jpa.JpaVendorAdapter;
+import org.springframework.orm.jpa.vendor.Database;
+import org.springframework.orm.jpa.vendor.HibernateJpaVendorAdapter;
+import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
+import org.springframework.transaction.annotation.TransactionManagementConfigurer;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.env.Environment;
 import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.FilterType;
+import org.springframework.context.annotation.ComponentScan.Filter;
 
 import java.io.IOException;
 import java.util.Arrays;
 
 @Configuration
-@ComponentScan("com")
-@EnableTransactionManagement
+// Component Scan less com.hibernate - as it would cause autowiring failure (no SessionFactory)  
+@ComponentScan(basePackages="com",
+  excludeFilters= @Filter(type=FilterType.REGEX, pattern="com\\.hibernate\\..*"))
+
+// Rework for Hibernate+JPA:
+// 1. No SessionFactory for Hibernate+JPA
+// 2. EntityManagerFactory  (ie. emf bean -> LocalContainerEntityManagerFactoryBean set with JPAVendorAdapter bean)
+// 3. JPA Vendor Adapter bean (jpaVendorAdapter) set with HibernateJpaVendorAdapter()
+// 4. Different transaction management:  
+//    a. PlatformTransactionManager declared in an internal static class, "TransactionConfig" 
 public class AppConfig {
 	// What is needed:?
 	// 1. DataSource (either MySQL or H2)
@@ -36,9 +55,6 @@ public class AppConfig {
 	
 	@Autowired
 	Environment environment; // This is to read active profile.
-	
-	@Autowired
-	SessionFactory sessionFactory;
 	
 	@Bean
 	@Profile("test")
@@ -64,38 +80,57 @@ public class AppConfig {
 		return ds;
 	}
 	
-	// TODO: DBCP(MySQL) dataSource @Profile("prod")
-	//public BasicDataSource dbcpDataSource() {
-	//}
-	
-	// HibernateTransactionManager is required to use @Transactional annotation in repository.
+	// This bean will also produce "EntityManagerFactory" bean
 	@Bean
-	  public PlatformTransactionManager annotationDrivenTransactionManager() {
-		    System.out.println(sessionFactory);
-		    HibernateTransactionManager transactionManager = new HibernateTransactionManager();
-		    transactionManager.setSessionFactory(sessionFactory);
-		    return transactionManager;
-		  }	
+	public LocalContainerEntityManagerFactoryBean emf(DataSource dataSource, JpaVendorAdapter jpaVendorAdapter) {
+		LocalContainerEntityManagerFactoryBean emf = new LocalContainerEntityManagerFactoryBean();
+		emf.setDataSource(dataSource);
+		emf.setPersistenceUnitName("salesPU");
+		emf.setJpaVendorAdapter(jpaVendorAdapter);
+		emf.setPackagesToScan("com.domain");
+		return emf;
+	}
 	
 	@Bean
-	public SessionFactory sessionFactory(DataSource dataSource) throws IOException {
-		LocalSessionFactoryBean sfb = new LocalSessionFactoryBean();
-		sfb.setDataSource(dataSource);
-		sfb.setPackagesToScan("com.domain");
-		Properties props = new Properties();
+	public JpaVendorAdapter jpaVendorAdapter() {
+		// Here (at least) the following are possible:
+		//  - EclipseLinkJpaVendorAdapter
+		//  - HibernateJpaVendorAdapter
+		//  - OpenJpaVendorAdapter
+		HibernateJpaVendorAdapter adapter = new HibernateJpaVendorAdapter();
+		
+		adapter.setDatabase(Database.H2); // FIXME: Or MYSQL. Depends on the Profile.
 		
 		if (environment.acceptsProfiles("prod", "!test")) {
-			props.setProperty("dialect", "org.hibernate.dialect.MySQL57InnoDBDialect");
+			System.out.println("JPAVendorAdapter: MySQL");
+			adapter.setDatabase(Database.MYSQL);
+			adapter.setDatabasePlatform("org.hibernate.dialect.MySQL57InnoDBDialect"); 	
 		} else if (environment.acceptsProfiles("test", "!prod")) {
-			props.setProperty("dialect", "com.hibernate.dialect.H2Dialect");
+			System.out.println("JPAVendorAdapter: H2");
+			adapter.setDatabase(Database.H2);
+			adapter.setDatabasePlatform("org.hibernate.dialect.H2Dialect");
 		} else {
 			throw new RuntimeException("Incorrect profiles: " + Arrays.stream(environment.getActiveProfiles()).collect(Collectors.joining(",")) );
-		}
-
-		System.out.println("Hibernate dialect set to:" + props.getProperty("dialect"));
-
-		sfb.setHibernateProperties(props);
-		sfb.afterPropertiesSet();
-		return sfb.getObject();
+		}		
+		adapter.setShowSql(true);
+		adapter.setGenerateDdl(false);
+		
+		return adapter;
 	}
+	
+	// Configuration in "Config" -> probably could unpack this to the outer class.
+	@Configuration
+	@EnableTransactionManagement
+	public static class TransactionConfig implements TransactionManagementConfigurer {
+		@Inject
+		private EntityManagerFactory emf;
+
+		@Override
+		public PlatformTransactionManager annotationDrivenTransactionManager() {
+			JpaTransactionManager transactionManager = new JpaTransactionManager();
+			transactionManager.setEntityManagerFactory(emf);
+			return transactionManager;
+		}
+	}
+	
 }
