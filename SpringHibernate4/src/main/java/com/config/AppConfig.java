@@ -26,6 +26,7 @@ import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.annotation.EnableTransactionManagement;
 import org.springframework.transaction.annotation.TransactionManagementConfigurer;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.core.env.Environment;
 import org.hibernate.SessionFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,8 +38,8 @@ import java.util.Arrays;
 
 @Configuration
 // Component Scan less com.hibernate - as it would cause autowiring failure (no SessionFactory)  
-@ComponentScan(basePackages="com",
-  excludeFilters= @Filter(type=FilterType.REGEX, pattern="com\\.hibernate\\..*"))
+@ComponentScan(basePackages="com")
+  //excludeFilters= @Filter(type=FilterType.REGEX, pattern="com\\.hibernate\\..*")) (PACKAGE REMOVED)
 
 // Rework for Hibernate+JPA:
 // 1. No SessionFactory for Hibernate+JPA
@@ -81,8 +82,9 @@ public class AppConfig {
 	}
 	
 	// This bean will also produce "EntityManagerFactory" bean
+	// !!It has to be named "entityManagerFactory" and not "emf".!!
 	@Bean
-	public LocalContainerEntityManagerFactoryBean emf(DataSource dataSource, JpaVendorAdapter jpaVendorAdapter) {
+	public LocalContainerEntityManagerFactoryBean entityManagerFactory(DataSource dataSource, JpaVendorAdapter jpaVendorAdapter) {
 		LocalContainerEntityManagerFactoryBean emf = new LocalContainerEntityManagerFactoryBean();
 		emf.setDataSource(dataSource);
 		emf.setPersistenceUnitName("salesPU");
@@ -121,12 +123,12 @@ public class AppConfig {
 	// Configuration in "Config" -> probably could unpack this to the outer class.
 	@Configuration
 	@EnableTransactionManagement
-	public static class TransactionConfig implements TransactionManagementConfigurer {
+	public static class TransactionConfig {
 		@Inject
 		private EntityManagerFactory emf;
 
-		@Override
-		public PlatformTransactionManager annotationDrivenTransactionManager() {
+		@Bean
+		public PlatformTransactionManager transactionManager() {
 			JpaTransactionManager transactionManager = new JpaTransactionManager();
 			transactionManager.setEntityManagerFactory(emf);
 			return transactionManager;
